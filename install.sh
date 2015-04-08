@@ -62,8 +62,7 @@ if [ "$UNAME" = "Darwin" ] ; then
     echo "Please remove it by running these commands:"
     echo "  $ sudo rm /usr/local/bin/meteor"
     echo "  $ sudo rm -rf /usr/local/meteor /usr/local/meteor.old"
-    echo "and then run the installer command again:"
-    echo "  $ curl https://install.meteor.com/ | sh"
+    echo "and then run the installer command again"
     exit 1
   fi
 
@@ -87,8 +86,7 @@ elif [ "$UNAME" = "Linux" ] ; then
     echo "Please remove it by running these commands:"
     echo "  $ sudo dpkg -r meteor"
     echo "  $ hash -r"
-    echo "and then run the installer command again:"
-    echo "  $ curl https://install.meteor.com/ | sh"
+    echo "and then run the installer command again"
     exit 1
   fi
 
@@ -98,8 +96,7 @@ elif [ "$UNAME" = "Linux" ] ; then
     echo "Please remove it by running these commands:"
     echo "  $ sudo rpm -e meteor"
     echo "  $ hash -r"
-    echo "and then run the installer command again:"
-    echo "  $ curl https://install.meteor.com/ | sh"
+    echo "and then run the installer command again"
     exit 1
   fi
 fi
@@ -115,18 +112,16 @@ fi
 TARBALL_URL="https://d3sqy0vbqsdhku.cloudfront.net/packages-bootstrap/${RELEASE}/meteor-bootstrap-${PLATFORM}.tar.gz"
 
 INSTALL_TMPDIR="$HOME/.meteor-install-tmp"
-rm -rf "$INSTALL_TMPDIR"
+touch "$INSTALL_TMPDIR" && rm -r "$INSTALL_TMPDIR"
 mkdir "$INSTALL_TMPDIR"
 echo "Downloading Meteor distribution"
 curl --progress-bar --fail "$TARBALL_URL" | tar -xzf - -C "$INSTALL_TMPDIR" -o
 # bomb out if it didn't work, eg no net
 test -x "${INSTALL_TMPDIR}/.meteor/meteor"
 mv "${INSTALL_TMPDIR}/.meteor" "$HOME"
-rm -rf "${INSTALL_TMPDIR}"
-# just double-checking :)
-test -x "$HOME/.meteor/meteor"
+rm -r "${INSTALL_TMPDIR}"
 
-
+trap - EXIT
 
 echo
 echo "Meteor ${RELEASE} has been installed in your home directory (~/.meteor)."
@@ -135,11 +130,22 @@ METEOR_SYMLINK_TARGET="$(readlink "$HOME/.meteor/meteor")"
 METEOR_TOOL_DIRECTORY="$(dirname "$METEOR_SYMLINK_TARGET")"
 LAUNCHER="$HOME/.meteor/$METEOR_TOOL_DIRECTORY/scripts/admin/launch-meteor"
 
+# This script uses synlinks to avoid messing with paths again.  Thus, if Meteor
+# is already in the user path and is a synlink to $LAUNCHER, simply tell the
+# user the update install was successful and exit.
+CURRENT_METEOR=`which meteor`
+if [ -n "${CURRENT_METEOR}" ] && [ "$(readlink "${CURRENT_METEOR}")" = "${LAUNCHER}" ]; then
+  echo "Meteor symlink is already in your path, so you are ready to go"
+  echo "You know what to do from here :)"
+  exit 0
+fi
 
 
-
-if cp "$LAUNCHER" "$PREFIX/bin/meteor" >/dev/null 2>&1; then
-  echo "Writing a launcher script to $PREFIX/bin/meteor for your convenience."
+# Check for a $HOME/bin, a common place to put user launchers
+# Assume if it exists that it is in the path
+if [ -d ${HOME}/bin ]; then
+  echo "Writing a launcher script to ${HOME}/bin/meteor for your convenience."
+  ln -s "${LAUNCHER}" "${HOME}/bin/meteor"
   cat <<"EOF"
 
 To get started fast:
@@ -153,48 +159,6 @@ Or see the docs at:
   docs.meteor.com
 
 EOF
-elif type sudo >/dev/null 2>&1; then
-  echo "Writing a launcher script to $PREFIX/bin/meteor for your convenience."
-  echo "This may prompt for your password."
-
-  # New macs (10.9+) don't ship with /usr/local, however it is still in
-  # the default PATH. We still install there, we just need to create the
-  # directory first.
-  # XXX this means that we can run sudo too many times. we should never
-  #     run it more than once if it fails the first time
-  if [ ! -d "$PREFIX/bin" ] ; then
-      sudo mkdir -m 755 "$PREFIX" || true
-      sudo mkdir -m 755 "$PREFIX/bin" || true
-  fi
-
-  if sudo cp "$LAUNCHER" "$PREFIX/bin/meteor"; then
-    cat <<"EOF"
-
-To get started fast:
-
-  $ meteor create ~/my_cool_app
-  $ cd ~/my_cool_app
-  $ meteor
-
-Or see the docs at:
-
-  docs.meteor.com
-
-EOF
-  else
-    cat <<EOF
-
-Couldn't write the launcher script. Please either:
-
-  (1) Run the following as root:
-        cp "$LAUNCHER" /usr/bin/meteor
-  (2) Add "\$HOME/.meteor" to your path, or
-  (3) Rerun this command to try again.
-
-Then to get started, take a look at 'meteor --help' or see the docs at
-docs.meteor.com.
-EOF
-  fi
 else
   cat <<EOF
 
@@ -202,15 +166,12 @@ Now you need to do one of the following:
 
   (1) Add "\$HOME/.meteor" to your path, or
   (2) Run this command as root:
-        cp "$LAUNCHER" /usr/bin/meteor
+        ln -s "${LAUNCHER}" "/usr/bin/meteor"
 
 Then to get started, take a look at 'meteor --help' or see the docs at
 docs.meteor.com.
 EOF
 fi
-
-
-trap - EXIT
 }
 
 run_it
